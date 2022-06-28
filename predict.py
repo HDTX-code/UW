@@ -14,6 +14,9 @@ from tqdm import tqdm
 from classifier.get_class_model import get_class_model
 from ssformer.get_ssformer_model import get_ssformer_model
 
+import sys
+sys.path.append('../input/timm-pytorch-image-models/pytorch-image-models-master')
+
 
 def make_predict_csv(pic_path, val_csv_path):
     data_list = []
@@ -54,15 +57,13 @@ def rle_encode(img):
 
 
 def Pre_pic(pic_path, pre, data_transform):
+    png = cv2.imread(pic_path)
     if pre:
-        png = cv2.imread(pic_path)
         if not (png == 0).all():
             png = png * 5
             png[png > 255] = 255
             png = gamma_trans(png, math.log10(0.5) / math.log10(np.mean(png[png > 0]) / 255))
-        image = Image.fromarray(cv2.cvtColor(png, cv2.COLOR_BGR2RGB))
-    else:
-        image = Image.open(pic_path)
+    image = Image.fromarray(cv2.cvtColor(png, cv2.COLOR_BGR2RGB))
     size = (image.size[1], image.size[0])
     return data_transform(image), size
 
@@ -103,7 +104,8 @@ def main(args):
                                          ])
 
     # 开始预测
-    print(args)
+    # print(args)
+    class_df.index = list(range(len(class_df)))
     with tqdm(total=len(class_df), mininterval=0.3) as pbar:
         for item in range(len(class_df)):
             with torch.no_grad():
@@ -129,7 +131,7 @@ def main(args):
             pbar.update()
 
     # 生成submission.csv
-    if os.path.exists(os.path.join(args.pic_path, 'test')):
+    if pre:
         df_ssub = pd.read_csv(os.path.join(args.pic_path, 'sample_submission.csv'))
         del df_ssub['predicted']
         sub_df = df_ssub.merge(sub_df, on=['id', 'class'])
