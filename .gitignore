@@ -1,0 +1,11 @@
+*.png
+*.jpg
+*.zip
+*.DS_Store
+.DS_Store
+.empty
+*.csv
+.ipynb_checkpoints
+train
+logs
+data
