@@ -103,6 +103,7 @@ def main(args):
                                          ])
 
     # 开始预测
+    print(args)
     with tqdm(total=len(class_df), mininterval=0.3) as pbar:
         for item in range(len(class_df)):
             with torch.no_grad():
