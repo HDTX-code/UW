@@ -109,7 +109,7 @@ def main(args):
             with torch.no_grad():
                 image, size = Pre_pic(class_df.loc[item, 'path'], pre, data_transform)
                 # expand batch dimension
-                image = torch.unsqueeze(image, dim=0)
+                image = torch.unsqueeze(image, dim=0).to(device)
                 if model_class(image)[0].argmax().item() == 1:
                     class_df.loc[item, "class_predict"] = 1
                     prediction = model_seg(image)
