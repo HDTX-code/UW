@@ -154,6 +154,9 @@ if __name__ == '__main__':
     parser.add_argument('--pic_path', type=str, default=r"../input/uw-madison-gi-tract-image-segmentation",
                         help="pic文件夹位置")
     parser.add_argument('--save_dir', type=str, default="./", help='存储文件夹位置')
+    args = parser.parse_args()
+
+    main(args)
 
 
 
