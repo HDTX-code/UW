@@ -135,9 +135,9 @@ def main(args):
         sub_df = df_ssub.merge(sub_df, on=['id', 'class'])
         assert len(sub_df) == len(df_ssub)
     else:
-        print(len(class_df.loc[((class_df['class'] == 0) & (class_df['class_predict'] == 0)).index.tolist(), :]) /
+        print(len(class_df.loc[((class_df['class'] == 0) & (class_df['class_predict'] == 0)), :]) /
               len(class_df.loc[class_df['class'] == 0, :]))
-        print(len(class_df.loc[((class_df['class'] != 0) & (class_df['class_predict'] != 0)).index.tolist(), :]) /
+        print(len(class_df.loc[((class_df['class'] != 0) & (class_df['class_predict'] != 0)), :]) /
               len(class_df.loc[class_df['class'] != 0, :]))
         class_df.to_csv(os.path.join(args.save_dir, 'class_predict.csv'), index=False)
     sub_df[['id', 'class', 'predicted']].to_csv(os.path.join(args.save_dir, 'submission.csv'), index=False)
