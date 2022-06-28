@@ -147,8 +147,10 @@ if __name__ == '__main__':
     parser.add_argument('--GPU', type=int, default=0, help='GPU_ID')
     parser.add_argument('--num_classes', type=int, default=3)
     parser.add_argument('--size', type=int, default=384, help='pic size')
-    parser.add_argument('--class_weights_path', type=str, help='training weights')
-    parser.add_argument('--seg_weights_path', type=str, help='training weights')
+    parser.add_argument('--model_class_name', type=str, default='resnet18')
+    parser.add_argument('--model_seg_name', type=str, default='mit_PLD_b2')
+    parser.add_argument('--class_weights_path', type=str)
+    parser.add_argument('--seg_weights_path', type=str)
     parser.add_argument('--pic_path', type=str, default=r"../input/uw-madison-gi-tract-image-segmentation",
                         help="pic文件夹位置")
     parser.add_argument('--save_dir', type=str, default="./", help='存储文件夹位置')
