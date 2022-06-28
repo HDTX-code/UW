@@ -112,7 +112,7 @@ def main(args):
                 image = torch.unsqueeze(image, dim=0).to(device)
                 if model_class(image)[0].argmax().item() == 1:
                     class_df.loc[item, "class_predict"] = 1
-                    prediction = model_seg(image)
+                    prediction = model_seg(image)['out']
                     predictions = F.resize(torch.stack(
                         [prediction[0][[0, item + 1], ...].argmax(0) for item in range(args.num_classes)], dim=0),
                         size, interpolation=transforms.InterpolationMode.NEAREST).permute(1, 2, 0).cpu().numpy()
