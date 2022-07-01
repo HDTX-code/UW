@@ -438,7 +438,7 @@ class mit_PLD_b4(nn.Module):
         self.backbone = mit_b4()
         #####################################
         self.decode_head = Decoder(dims=[64, 128, 320, 512], dim=256, class_num=class_num)
-        self._init_weights() # load pretrain
+        # self._init_weights() # load pretrain
 
     def forward(self, x):
         features = self.backbone(x)
