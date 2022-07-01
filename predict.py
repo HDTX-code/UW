@@ -117,7 +117,7 @@ def main(args):
     model.eval()
 
     # model初始化
-    model_c = get_class_model(2, backbone='resnet18', pretrained=False)
+    model_c = get_class_model(2, backbone=args.model_name_c, pretrained=False)
     model_c.load_state_dict(torch.load(args.weights_path_c, map_location='cpu')['model'])
     model_c.to(device)
     model_c.eval()
@@ -188,6 +188,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='submit set')
     parser.add_argument('--model_name', type=str, default='mit_PLD_b4')
+    parser.add_argument('--model_name_c', type=str, default='resnet18')
     parser.add_argument('--size', type=int, default=384, help='pic size')
     parser.add_argument('--num_classes', type=int, default=3)
     parser.add_argument('--batch_size', type=int, default=72)
