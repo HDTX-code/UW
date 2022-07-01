@@ -1,47 +1,92 @@
 import argparse
+import copy
 import math
 import os
+import sys
 
 import cv2
 import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
+from torch.utils.data import Dataset
 from torchvision.transforms import transforms
 from torchvision.transforms import functional as F
 from tqdm import tqdm
 
 from classifier.get_class_model import get_class_model
-from ssformer.get_ssformer_model import get_ssformer_model
+from ssformer.build_ssformer_model import build
 
-import sys
 sys.path.append('../input/timm-pytorch-image-models/pytorch-image-models-master')
+sys.path.append('../input/openmmlab-essential-repositories/openmmlab-repos/mmcv')
+sys.path.append('../input/addict/addict')
 
 
-def make_predict_csv(pic_path, val_csv_path):
+class TestdataSet(Dataset):
+    def __init__(self, csv, pre, transform):
+        self.csv = csv
+        self.pre = pre
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.csv)
+
+    def __getitem__(self, item):
+        path = self.csv.loc[item, 'path']
+        img, size = self.Pre_pic(path, self.pre, self.transform)
+        return img, size, item
+
+    def Pre_pic(self, pic_path, pre, data_transform):
+        png = cv2.imread(pic_path)
+        if pre:
+            if not (png == 0).all():
+                png = png * 5
+                png[png > 255] = 255
+                png = self.gamma_trans(png, math.log10(0.5) / math.log10(np.mean(png[png > 0]) / 255))
+        image = Image.fromarray(cv2.cvtColor(png, cv2.COLOR_BGR2RGB))
+        size = (image.size[1], image.size[0])
+        return data_transform(image), size
+
+    @staticmethod
+    def gamma_trans(img, gamma):
+        gamma_table = [np.power(x / 255.0, gamma) * 255.0 for x in range(256)]
+        gamma_table = np.round(np.array(gamma_table)).astype(np.uint8)
+        return cv2.LUT(img, gamma_table)
+
+    @staticmethod
+    def collate_fn(batch):
+        img, size, item = list(zip(*batch))
+        image = torch.stack([i for i in img], dim=0)
+        return image, size, item
+
+
+def get_model(model_name, num_classes):
+    model = build(model_name=model_name, class_num=num_classes)
+    return model
+
+
+def make_predict_csv(pic_path):
     data_list = []
+    case_day_list = []
     class_df = pd.DataFrame(columns=["id", "path", "class_predict"])
     if os.path.exists(os.path.join(pic_path, 'test')):
         path_root = os.path.join(pic_path, 'test')
-        for item_case in os.listdir(path_root):
+        case_list = os.listdir(path_root)
+    else:
+        path_root = os.path.join(pic_path, 'train')
+        case_list = os.listdir(path_root)[:10]
+    with tqdm(total=len(case_list)) as pbar:
+        for item_case in case_list:
             for item_day in os.listdir(os.path.join(path_root, item_case)):
                 path = os.path.join(path_root, item_case, item_day, 'scans')
                 data_list.extend(map(lambda x: os.path.join(path, x), os.listdir(path)))
-        class_df["path"] = data_list
-        class_df["id"] = class_df["path"].apply(lambda x: str(x.split("/")[5]) + "_" + str(
-            x.split("/")[-1].split("_")[0] + '_' + x.split("/")[-1].split("_")[1]))
-        pre = True
-    else:
-        val_csv = pd.read_csv(val_csv_path)
-        class_df[["id", "path", "class"]] = val_csv[["id", "path", "classes"]]
-        pre = False
-    return class_df, pre
-
-
-def gamma_trans(img, gamma):
-    gamma_table = [np.power(x / 255.0, gamma) * 255.0 for x in range(256)]
-    gamma_table = np.round(np.array(gamma_table)).astype(np.uint8)
-    return cv2.LUT(img, gamma_table)
+                for len_item in os.listdir(path):
+                    case_day_list.append(item_day)
+            pbar.update(1)
+    for i, item_pic_path in enumerate(data_list):
+        class_df.loc[len(class_df)] = [case_day_list[i] + '_' + item_pic_path[-32:-22], item_pic_path, ""]
+    class_df.index = list(range(len(class_df)))
+    return class_df, True
 
 
 def rle_encode(img):
@@ -56,44 +101,33 @@ def rle_encode(img):
     return ' '.join(str(x) for x in runs)
 
 
-def Pre_pic(pic_path, pre, data_transform):
-    png = cv2.imread(pic_path)
-    if pre:
-        if not (png == 0).all():
-            png = png * 5
-            png[png > 255] = 255
-            png = gamma_trans(png, math.log10(0.5) / math.log10(np.mean(png[png > 0]) / 255))
-    image = Image.fromarray(cv2.cvtColor(png, cv2.COLOR_BGR2RGB))
-    size = (image.size[1], image.size[0])
-    return data_transform(image), size
-
-
 def main(args):
-    # get devices
-    if torch.cuda.is_available():
-        torch.cuda.set_device(args.GPU)
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
+    # 设备
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("using {} device.".format(device))
 
-    # class_model
-    model_class = get_class_model(num_classes=2, backbone=args.model_class_name, pretrained=False)
-    model_class.load_state_dict(torch.load(args.class_weights_path, map_location='cpu')['model'])
-    model_class.to(device)
-    model_class.eval()
-    # SS_former
-    model_seg = get_ssformer_model(model_name=args.model_seg_name, num_classes=args.num_classes + 1)
-    model_seg.load_state_dict(torch.load(args.seg_weights_path, map_location='cpu')['model'])
-    model_seg.to(device)
-    model_seg.eval()
+    # num_workers
+    args.num_workers = min(min([os.cpu_count(), args.batch_size if args.batch_size > 1 else 0, 8]),
+                           args.num_workers)
+
+    # model初始化
+    model = get_model(model_name=args.model_name, num_classes=args.num_classes + 1)
+    model.load_state_dict(torch.load(args.weights_path, map_location='cpu')['model'])
+    model.to(device)
+    model.eval()
+
+    # model初始化
+    model_c = get_class_model(2, backbone='resnet18', pretrained=False)
+    model_c.load_state_dict(torch.load(args.weights_path, map_location='cpu')['model'])
+    model_c.to(device)
+    model_c.eval()
 
     # 获取预测csv
-    class_df, pre = make_predict_csv(args.pic_path, args.val_csv_path)
+    class_df, pre = make_predict_csv(args.pic_path)
 
     # 生成提交csv
     sub_df = pd.DataFrame(columns=["id", "class", "predicted"])
-    class_dict = dict(zip([0, 1, 2], ['large_bowel', 'small_bowel', 'stomach']))
+    class_dict = ['stomach', 'small_bowel', 'large_bowel']
 
     # using compute_mean_std.py
     mean = (0.709, 0.381, 0.224)
@@ -103,66 +137,66 @@ def main(args):
                                          transforms.Resize((args.size, args.size))
                                          ])
 
+    # dataloader
+    dataset_test = TestdataSet(copy.deepcopy(class_df), pre, data_transform)
+    gen = torch.utils.data.DataLoader(dataset_test,
+                                      batch_size=args.batch_size,
+                                      num_workers=args.num_workers,
+                                      collate_fn=dataset_test.collate_fn,
+                                      shuffle=False)
     # 开始预测
-    # print(args)
-    class_df.index = list(range(len(class_df)))
-    with tqdm(total=len(class_df), mininterval=0.3) as pbar:
-        for item in range(len(class_df)):
+    print(args)
+    print(pre)
+    with tqdm(total=len(gen), mininterval=0.3) as pbar:
+        for item_img, item_size, item in gen:
             with torch.no_grad():
-                image, size = Pre_pic(class_df.loc[item, 'path'], pre, data_transform)
-                # expand batch dimension
-                image = torch.unsqueeze(image, dim=0).to(device)
-                if model_class(image)[0].argmax().item() == 1:
-                    class_df.loc[item, "class_predict"] = 1
-                    prediction = model_seg(image)['out']
-                    predictions = F.resize(torch.stack(
-                        [prediction[0][[0, item + 1], ...].argmax(0) for item in range(args.num_classes)], dim=0),
-                        size, interpolation=transforms.InterpolationMode.NEAREST).permute(1, 2, 0).cpu().numpy()
-                    for item_class in range(predictions.shape[-1]):
-                        if not (predictions[..., item_class] == 0).all():
-                            list_item = predictions[..., item_class]
-                            list_item[list_item != 0] = 1
-                            sub_df.loc[item] = [class_df.loc[item, 'id'], class_dict[item_class], rle_encode(list_item)]
-                        else:
-                            sub_df.loc[item] = [class_df.loc[item, 'id'], class_dict[item_class], ""]
-                else:
-                    class_df.loc[item, "class_predict"] = 0
-                    sub_df.loc[item] = [class_df.loc[item, 'id'], class_dict[item_class], ""]
+                cl = model_c(item_img.to(device)).argmax(1)
+                prediction = model(item_img.to(device))['out']
+                for item_batch in range(prediction.shape[0]):
+                    if cl[item_batch].item() == 1:
+                        predictions = F.resize(torch.stack(
+                            [prediction[item_batch][[0, item_C + 1], ...].argmax(0) for item_C in range(args.num_classes)],
+                            dim=0), item_size[item_batch],
+                            interpolation=transforms.InterpolationMode.NEAREST).permute(1, 2, 0).cpu().numpy()
+                        for item_class in range(predictions.shape[-1]):
+                            if not (predictions[..., item_class] == 0).all():
+                                list_item = predictions[..., item_class]
+                                list_item[list_item != 0] = 1
+                                sub_df.loc[len(sub_df)] = [class_df.loc[item[item_batch], 'id'], class_dict[item_class],
+                                                           rle_encode(list_item)]
+                            else:
+                                sub_df.loc[len(sub_df)] = [class_df.loc[item[item_batch], 'id'], class_dict[item_class], ""]
+                    else:
+                        for i in range(3):
+                            sub_df.loc[len(sub_df)] = [class_df.loc[item[item_batch], 'id'], class_dict[item_class], ""]
             pbar.update()
 
     # 生成submission.csv
-    if pre:
+    if os.path.exists(os.path.join(args.pic_path, 'test')):
         df_ssub = pd.read_csv(os.path.join(args.pic_path, 'sample_submission.csv'))
         del df_ssub['predicted']
         sub_df = df_ssub.merge(sub_df, on=['id', 'class'])
         assert len(sub_df) == len(df_ssub)
     else:
-        print(len(class_df.loc[((class_df['class'] == 0) & (class_df['class_predict'] == 0)), :]) /
-              len(class_df.loc[class_df['class'] == 0, :]))
-        print(len(class_df.loc[((class_df['class'] != 0) & (class_df['class_predict'] != 0)), :]) /
-              len(class_df.loc[class_df['class'] != 0, :]))
-        class_df.to_csv(os.path.join(args.save_dir, 'class_predict.csv'), index=False)
+        df_ssub = pd.read_csv(os.path.join(args.pic_path, 'train.csv'))
+        del df_ssub['segmentation']
+        sub_df = df_ssub.merge(sub_df, on=['id', 'class'])
+
     sub_df[['id', 'class', 'predicted']].to_csv(os.path.join(args.save_dir, 'submission.csv'), index=False)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='submit set')
-    parser.add_argument('--GPU', type=int, default=0, help='GPU_ID')
-    parser.add_argument('--num_classes', type=int, default=3)
+    parser.add_argument('--model_name', type=str, default='mit_PLD_b4')
     parser.add_argument('--size', type=int, default=384, help='pic size')
-    parser.add_argument('--model_class_name', type=str, default='resnet18')
-    parser.add_argument('--model_seg_name', type=str, default='mit_PLD_b2')
-    parser.add_argument('--class_weights_path', type=str)
-    parser.add_argument('--seg_weights_path', type=str)
-    parser.add_argument('--pic_path', type=str, default=r"../input/uw-madison-gi-tract-image-segmentation",
+    parser.add_argument('--num_classes', type=int, default=3)
+    parser.add_argument('--batch_size', type=int, default=72)
+    parser.add_argument('--num_workers', type=int, default=24, help="num_workers")
+    parser.add_argument('--weights_path', default='weights/loss_20220629202632/best_model_mit_PLD_b4.pth', type=str,
+                        help='training weights')
+    parser.add_argument('--pic_path', type=str, default=r"C:\Users\12529\Desktop\test",
                         help="pic文件夹位置")
-    parser.add_argument('--val_csv_path', type=str,
-                        default=r"../input/uw-all-classes-csv/val_csv.csv", help='预测csv路径')
     parser.add_argument('--save_dir', type=str, default="./", help='存储文件夹位置')
     args = parser.parse_args()
 
     main(args)
-
-
-
-
