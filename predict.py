@@ -133,7 +133,7 @@ def main(args):
     mean = (0.709, 0.381, 0.224)
     std = (0.127, 0.079, 0.043)
     data_transform = transforms.Compose([transforms.ToTensor(),
-                                         transforms.Normalize(mean=mean[0], std=std[0]),
+                                         transforms.Normalize(mean=mean, std=std),
                                          transforms.Resize((args.size, args.size))
                                          ])
 
