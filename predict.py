@@ -23,9 +23,8 @@ sys.path.append('../input/addict/addict')
 
 
 class TestdataSet(Dataset):
-    def __init__(self, csv, pre, transform):
+    def __init__(self, csv, transform):
         self.csv = csv
-        self.pre = pre
         self.transform = transform
 
     def __len__(self):
@@ -33,16 +32,15 @@ class TestdataSet(Dataset):
 
     def __getitem__(self, item):
         path = self.csv.loc[item, 'path']
-        img, size = self.Pre_pic(path, self.pre, self.transform)
+        img, size = self.Pre_pic(path, self.transform)
         return img, size, item
 
-    def Pre_pic(self, pic_path, pre, data_transform):
+    def Pre_pic(self, pic_path, data_transform):
         png = cv2.imread(pic_path)
-        if pre:
-            if not (png == 0).all():
-                png = png * 5
-                png[png > 255] = 255
-                png = self.gamma_trans(png, math.log10(0.5) / math.log10(np.mean(png[png > 0]) / 255))
+        if not (png == 0).all():
+            png = png * 5
+            png[png > 255] = 255
+            png = self.gamma_trans(png, math.log10(0.5) / math.log10(np.mean(png[png > 0]) / 255))
         image = Image.fromarray(cv2.cvtColor(png, cv2.COLOR_BGR2RGB))
         size = (image.size[1], image.size[0])
         return data_transform(image), size
@@ -86,7 +84,7 @@ def make_predict_csv(pic_path):
     for i, item_pic_path in enumerate(data_list):
         class_df.loc[len(class_df)] = [case_day_list[i] + '_' + item_pic_path[-32:-22], item_pic_path, ""]
     class_df.index = list(range(len(class_df)))
-    return class_df, True
+    return class_df
 
 
 def rle_encode(img):
@@ -123,7 +121,7 @@ def main(args):
     model_c.eval()
 
     # 获取预测csv
-    class_df, pre = make_predict_csv(args.pic_path)
+    class_df = make_predict_csv(args.pic_path)
 
     # 生成提交csv
     sub_df = pd.DataFrame(columns=["id", "class", "predicted"])
@@ -138,7 +136,7 @@ def main(args):
                                          ])
 
     # dataloader
-    dataset_test = TestdataSet(copy.deepcopy(class_df), pre, data_transform)
+    dataset_test = TestdataSet(copy.deepcopy(class_df), data_transform)
     gen = torch.utils.data.DataLoader(dataset_test,
                                       batch_size=args.batch_size,
                                       num_workers=args.num_workers,
@@ -146,7 +144,6 @@ def main(args):
                                       shuffle=False)
     # 开始预测
     print(args)
-    print(pre)
     with tqdm(total=len(gen), mininterval=0.3) as pbar:
         for item_img, item_size, item in gen:
             with torch.no_grad():
