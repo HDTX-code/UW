@@ -167,7 +167,7 @@ def main(args):
                             else:
                                 sub_df.loc[len(sub_df)] = [class_df.loc[item[item_batch], 'id'], class_dict[item_class], ""]
                     else:
-                        for i in range(3):
+                        for item_class in range(3):
                             sub_df.loc[len(sub_df)] = [class_df.loc[item[item_batch], 'id'], class_dict[item_class], ""]
             pbar.update()
 
