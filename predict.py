@@ -118,7 +118,7 @@ def main(args):
 
     # model初始化
     model_c = get_class_model(2, backbone='resnet18', pretrained=False)
-    model_c.load_state_dict(torch.load(args.weights_path, map_location='cpu')['model'])
+    model_c.load_state_dict(torch.load(args.weights_path_c, map_location='cpu')['model'])
     model_c.to(device)
     model_c.eval()
 
@@ -193,6 +193,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=72)
     parser.add_argument('--num_workers', type=int, default=24, help="num_workers")
     parser.add_argument('--weights_path', default='weights/loss_20220629202632/best_model_mit_PLD_b4.pth', type=str,
+                        help='training weights')
+    parser.add_argument('--weights_path_c', default='weights/loss_20220629202632/best_model_mit_PLD_b4.pth', type=str,
                         help='training weights')
     parser.add_argument('--pic_path', type=str, default=r"C:\Users\12529\Desktop\test",
                         help="pic文件夹位置")
