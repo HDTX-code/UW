@@ -115,7 +115,7 @@ def main(args):
     model.eval()
 
     # model初始化
-    model_c = get_class_model(2, backbone=args.model_name_c, pretrained=False)
+    model_c = get_class_model(3, backbone=args.model_name_c, pretrained=False)
     model_c.load_state_dict(torch.load(args.weights_path_c, map_location='cpu')['model'])
     model_c.to(device)
     model_c.eval()
@@ -150,7 +150,7 @@ def main(args):
                 cl = model_c(item_img.to(device)).argmax(1)
                 prediction = model(item_img.to(device))['out']
                 for item_batch in range(prediction.shape[0]):
-                    if cl[item_batch].item() == 1:
+                    if cl[item_batch].item() != 0:
                         predictions = F.resize(torch.stack(
                             [prediction[item_batch][[0, item_C + 1], ...].argmax(0) for item_C in range(args.num_classes)],
                             dim=0), item_size[item_batch],
